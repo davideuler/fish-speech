@@ -218,6 +218,20 @@ COPY --chown=${USER_UID}:${USER_GID} . .
 # Install the local package after copying source code
 RUN uv sync --extra ${UV_EXTRA} --frozen
 
+# ── flash-attn: install prebuilt wheel for faster attention kernels ──────────
+# Wheel built for: torch2.8+cu12+cp312 (cxx11 abi=TRUE, linux_x86_64)
+# Source: https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.3
+# NOTE: wheel not committed to git (245MB); downloaded at build time.
+ARG FLASH_ATTN_URL=https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+RUN --mount=type=cache,target=/tmp/uv-cache,uid=${USER_UID},gid=${USER_GID} \
+    if [ "${BACKEND}" = "cuda" ]; then \
+        curl -fL -o /tmp/flash_attn.whl "${FLASH_ATTN_URL}" \
+        && uv pip install /tmp/flash_attn.whl --no-deps \
+        && rm /tmp/flash_attn.whl; \
+    else \
+        echo "Skipping flash_attn for non-CUDA backend"; \
+    fi
+
 # Create common entrypoint script
 RUN printf '%s\n' \
     '#!/bin/bash' \
@@ -270,6 +284,10 @@ RUN printf '%s\n' \
     '    curl -f http://localhost:${port}${endpoint} 2>/dev/null || exit 1' \
     '}' \
     > /app/common.sh && chmod +x /app/common.sh
+
+
+# ── Performance: override model_manager.py with TF32 + SDPA + flash_attn ─────
+COPY --chown=${USER_UID}:${USER_GID} docker/model_manager_perf.py /app/tools/server/model_manager.py
 
 ##############################################################
 # App stages

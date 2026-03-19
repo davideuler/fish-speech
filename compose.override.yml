@@ -1,0 +1,42 @@
+services:
+  api-server:
+    image: fish-speech-webui:cuda
+    container_name: fish-speech-api
+    entrypoint: ["/app/.venv/bin/python3"]
+    command:
+      - tools/api_server.py
+      - "--listen"
+      - "0.0.0.0:8080"
+      - "--llama-checkpoint-path"
+      - "checkpoints/s2-pro"
+      - "--decoder-checkpoint-path"
+      - "checkpoints/s2-pro/codec.pth"
+      - "--decoder-config-name"
+      - "modded_dac_vq"
+      - "--half"
+      - "--compile"
+    working_dir: /app
+    environment:
+      - COMPILE=1
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./references:/app/references
+      - /tmp/torch_compile_cache:/root/.cache/torch
+    ports:
+      - "127.0.0.1:8080:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    profiles: ["api"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/v1/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 5
